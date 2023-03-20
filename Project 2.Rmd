@@ -1,0 +1,124 @@
+---
+title: "Project 2"
+author: "Dilara Kamrava"
+date: "4/10/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Table of Contents
+### Introduction
+### Data Organization
+### Visualizations
+### Conclusion
+
+
+### Introduction
+The English Premier League is the top tier of soccer in England, and contains 20 teams that enter or exit the league based on a system of promotion and relegation to lower leagues. Exceptional performance in the Premier League is rewarded: the team with the most points after 38 games wins the Premier League Trophy, and the top 4 teams qualify automatically for the UEFA Champion's League. Since the Premier League's founding in 1992, a "Big Six" of teams that consistently perform well has been established, composed of teams Chelsea, Arsenal, Manchester United, Manchester City, Tottenham, and Liverpool. 
+
+The UEFA Champions League is considered to be the most prestigious soccer competition in Europe. Its current format was established in 1992, and teams from all over the continent qualify for the League based on their exceptional performance in their local league. The number of teams that qualify per country is determined by local league strength (England sends 4 teams). The winner plays a total of 13 games to win the competition: 6 group-stage games, 2-legged ties for 3 knockout rounds, and 1 game for the final. 
+
+The prestigious nature of both the Premier League and the Champions League leads to 2 research questions:
+#### Do English teams do well overall in the Champions League?
+#### Are the English teams that do best in the Champions League the same teams that dominate the ocal Premier League?
+
+### Data Organization
+I begin by loading the required packages and examining the data objects we will use. For this project, I used data from the engsoccerdata package, which contains several data objects from the top flight European soccer leagues and playoffs. Specifically, I use the objects england.csv and champs.csv for my analysis. I primarily focus on the following variables: Team, Tiewinner, Season, Round, and Country. 
+
+```{r import}
+library(tidyverse)
+library(engsoccerdata)
+library(readr)
+library(plotly)
+```
+
+```{r head1}
+head(england)
+```
+
+```{r head2}
+head(champs)
+```
+
+Looking at these data objects, it is clear that we need to filter them to only include seasons where the current format was introduced. We can also create some useful data objects, and turn the data into a long format.
+```{r filter}
+england.f <- england %>% filter(Season > 1992)
+champs.f <- champs %>% filter(Season > 1992) %>% select(Date, Season, round, hcountry, vcountry, tiewinner, home, visitor)
+
+bigsix <- c("Chelsea", "Arsenal", "Manchester United", "Manchester City", "Tottenham", "Liverpool")
+
+levels(england.f$result) <- c("Away Win", "Draw", "Home Win")
+
+champs.long <- champs.f %>% select(Date, Season, round, hcountry, vcountry, home, visitor) %>% 
+  gather(key = "home", value = "team", 6:7) %>%
+  gather(key = "homecountry", value = "country", 4:5)
+```
+
+### Visualizations
+For my visualizations, I want to first establish the pattern of success of Big Six teams in the league with a stacked bar chart. I will then move onto analyzing the teams in the Champions League, first on a team-by-team basis via a scatterplot and then make a faceted 2d density bin chart using the long formatted data by country. Finally, I'll classify each English team in the UCL as either being a member of the Big Six or not, then show the same 2d density chart for England's UCL runs with that qualification.
+
+For this first plot, we'll look at how the Big Six teams do in their local league first and foremost to establish a pattern of dominance.
+```{r plot1}
+england.f %>% filter(home %in% bigsix) %>%
+  ggplot(aes(x = Season, fill = result)) +
+  geom_bar(position = "fill") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  labs(y = "Proportion", title = "Home Results of Big Six teams in the EPL from 1992-2015")
+```
+
+From the graph, we can see that Big Six teams do incredibly well in the EPL, with the exception of the 2015 season where they struggle a bit to win.
+
+Now, let's move onto the UCL. We can look at the playoff rounds (quarterfinal, semifinal, and final) and see which teams do the best in these playoff rounds. The country labels help us visualize which teams are playing.
+```{r plot2}
+g2 <- champs.f %>% filter(round %in% c("QF","SF", "final")) %>%
+  ggplot(aes(x = hcountry, y = vcountry, color = tiewinner)) +
+  theme_classic() +
+  scale_x_discrete(guide = guide_axis(angle = 90)) +
+  labs(color = "Winning Team", x = "Home Country", y = "Away Country", title = "Home and Away Country Representation in the UCL (1992-2015)", 
+       subtitle = "Including Winning Team in Each Matchup") +
+  geom_jitter(alpha = 0.5)
+
+ggplotly(g2)
+```
+
+This graph shows us that high-performing teams tend to be from England, Spain, France, or Germany. Borussia Dortmund, AC Milan, and Manchester United seem to be doing especially well.
+
+Unfortunately, the previous graph is a little difficult for determining how teams do in each individual round of the UCL playoffs. To fix this, I converted the data to a long format to make it easier to plot. I then plotted the data in a 2D density chart faceted by country.
+```{r plot3}
+champs.long <- champs.long %>% filter(round %in% c("QF", "SF", "final"))
+champs.long$round <- factor(champs.long$round, levels = c("final", "SF", "QF"))
+
+champs.long %>%
+  ggplot(aes(x = Season, y = round)) +
+  geom_bin_2d() +
+  facet_wrap(~country) +
+  theme_classic() +
+  labs(color = "Frequency", y = "Round", title = "Frequency of Teams Appearing in QF, SF, and Final", subtitle = "Faceted by Country")
+```
+
+While England is definitely in the top 3 in terms of playoff success, they face heavy competition from Spain, Germany, and Italy.
+
+But, this graph doesn't tell us whether the English teams that are performing well and going deep into the playoffs are members of the Big Six or not. To see whether or not this is true, I mutate the champs dataset to classify the teams as members of the Big Six and repeat the 2d density bin plot for English teams.
+```{r plot4}
+champs.long.1 <- champs.long %>% filter(country == "ENG") %>%
+  mutate(big.six = ifelse(team %in% bigsix, "yes", "no"))
+  
+champs.long.1 %>% ggplot(aes(x = Season, y = round)) +
+  geom_bin_2d() +
+  theme_classic() +
+  facet_wrap(~big.six) +
+  labs(y = "Round", title = "English Teams Playoff Runs Based on Big Six Membership", subtitle = "Big Six Member?")
+```
+
+Interestingly, it looks like the Big Six teams went on a highly dominant run between 2005-2010.
+
+### Conclusions
+I believe that my visualizations were concise and straightforward. Figure 1 provides a quantity to how dominant the big six teams are in their local league, justifying my question about whether they would perform well in international competitions. Figure 2 gives a big picture for which teams and countries tend to do well in the UCL, setting up figures 3 and 4. Figure 3 gives a really useful way to quantify each country's success in the playoffs and shows which countries English teams are competing against. Finally, figure 4 hones in on whether it is the Big Six teams that are responsible for England's success.
+
+Answers to Research Questions:
+Do English teams do well overall in the Champions League? Yes, but they’re not alone in their dominant form.
+Are the English teams that do best in the Champions League the same teams that dominate the local Premier League? Yes, but not as much as you might think. Their dominance changes over time and is subject to seasonal variability.
